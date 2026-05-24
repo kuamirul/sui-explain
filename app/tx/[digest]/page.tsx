@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { parseTransaction } from '@/lib/parser';
+import { enhanceHeadline } from '@/lib/llm';
 import { SummaryCard } from '@/components/SummaryCard';
 import { BalanceChanges } from '@/components/BalanceChanges';
 import { ObjectChanges } from '@/components/ObjectChanges';
@@ -15,8 +16,12 @@ export default async function TxPage({ params }: Props) {
   const decodedDigest = decodeURIComponent(digest);
 
   let tx;
+  let aiHeadline: string | undefined;
   try {
     tx = await parseTransaction(decodedDigest);
+    aiHeadline = await enhanceHeadline(tx);
+    // Only treat it as an AI headline if it differs from the rule-based one
+    if (aiHeadline === tx.headline) aiHeadline = undefined;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return (
@@ -44,7 +49,7 @@ export default async function TxPage({ params }: Props) {
           ← New search
         </Link>
 
-        <SummaryCard tx={tx} />
+        <SummaryCard tx={tx} aiHeadline={aiHeadline} />
         <BalanceChanges changes={tx.balanceChanges} />
         <CommandList commands={tx.commands} />
         <ObjectChanges changes={tx.objectChanges} />

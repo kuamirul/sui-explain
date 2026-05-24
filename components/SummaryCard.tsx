@@ -2,7 +2,7 @@ import type { ParsedTransaction } from '@/lib/parser';
 import { StatusBadge } from './StatusBadge';
 import { CopyButton } from './CopyButton';
 
-export function SummaryCard({ tx }: { tx: ParsedTransaction }) {
+export function SummaryCard({ tx, aiHeadline }: { tx: ParsedTransaction; aiHeadline?: string }) {
   const date = tx.timestampMs
     ? new Date(Number(tx.timestampMs)).toLocaleString()
     : null;
@@ -14,8 +14,15 @@ export function SummaryCard({ tx }: { tx: ParsedTransaction }) {
         {date && <span className="text-xs text-gray-500">{date}</span>}
       </div>
 
-      <h1 className="text-2xl font-bold text-gray-900">{tx.headline}</h1>
-      {tx.headlineSubtext && (
+      <div className="flex flex-wrap items-start gap-2">
+        <h1 className="text-2xl font-bold text-gray-900">{aiHeadline ?? tx.headline}</h1>
+        {aiHeadline && (
+          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">
+            ✨ AI
+          </span>
+        )}
+      </div>
+      {!aiHeadline && tx.headlineSubtext && (
         <p className="mt-1 text-base text-gray-500">{tx.headlineSubtext}</p>
       )}
       {tx.errorMessage && (
