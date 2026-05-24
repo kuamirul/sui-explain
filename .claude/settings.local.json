@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"D:\\\\Dev\\\\sui-exp\" -Recurse -Force)",
+      "Bash(Select-Object -Property FullName, PSIsContainer)",
+      "Bash(ConvertTo-Json)",
+      "Bash(dir /s /b)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\Dev\\\\sui-exp\" -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })",
+      "PowerShell(Test-Path \"D:\\\\Dev\\\\sui-exp\" -PathType Container; \\(Get-Item \"D:\\\\Dev\\\\sui-exp\"\\).LastWriteTime)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\Dev\\\\sui-exp\" -Force -Hidden | ForEach-Object { $_.Name })",
+      "PowerShell(\"Contents of D:\\\\Dev\\\\sui-exp:\")",
+      "PowerShell(\"---\")",
+      "PowerShell(\"All items recursively:\")",
+      "PowerShell(\"`nRecursive:\")"
+    ]
+  }
+}
