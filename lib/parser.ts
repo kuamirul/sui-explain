@@ -1,11 +1,6 @@
-import type {
-  SuiTransactionBlockResponse,
-  SuiObjectChange,
-  BalanceChange,
-  MoveCallSuiTransaction,
-  SuiTransaction,
-} from '@mysten/sui/jsonRpc';
-import { suiClient } from './sui';
+import type { SuiClientTypes } from '@mysten/sui/client';
+import { normalizeSuiAddress } from '@mysten/sui/utils';
+import { suiClient, getTransactionMeta } from './sui';
 import { getCoinMeta, formatAmount } from './coins';
 import { lookupProtocol, lookupAction } from './protocols';
 
@@ -46,34 +41,57 @@ export interface ParsedTransaction {
   commands: ParsedCommand[];
 }
 
-export async function parseTransaction(digest: string): Promise<ParsedTransaction> {
-  const raw = await suiClient.getTransactionBlock({
-    digest,
-    options: {
-      showInput: true,
-      showEffects: true,
-      showEvents: true,
-      showObjectChanges: true,
-      showBalanceChanges: true,
-    },
-  });
+// ── Fetching ─────────────────────────────────────────────────────────────────
 
-  const sender = raw.transaction?.data.sender ?? 'Unknown';
-  const status = raw.effects?.status.status === 'success' ? 'success' : 'failure';
-  const errorMessage = raw.effects?.status.error;
+type Command = SuiClientTypes.TransactionData['commands'][number];
+type MoveCall = Extract<Command, { MoveCall: unknown }>['MoveCall'];
+
+// Normalized view of a transaction, independent of the API transport.
+interface RawTx {
+  status: SuiClientTypes.ExecutionStatus;
+  effects: SuiClientTypes.TransactionEffects;
+  balanceChanges: SuiClientTypes.BalanceChange[];
+  objectTypes: Record<string, string>;
+  // null for non-programmable (system) transactions
+  commands: Command[] | null;
+}
+
+const NOT_PROGRAMMABLE = 'Only programmable transactions are supported';
+
+async function fetchRawTx(digest: string): Promise<RawTx> {
+  const base = { effects: true, balanceChanges: true, objectTypes: true } as const;
+  try {
+    const res = await suiClient.core.getTransaction({ digest, include: { ...base, transaction: true } });
+    const tx = res.Transaction ?? res.FailedTransaction;
+    return { ...tx, commands: tx.transaction.commands };
+  } catch (err) {
+    // The SDK cannot decode system transactions (e.g. epoch change). Load them without commands.
+    if (!(err instanceof Error) || !err.message.includes(NOT_PROGRAMMABLE)) throw err;
+    const res = await suiClient.core.getTransaction({ digest, include: base });
+    const tx = res.Transaction ?? res.FailedTransaction;
+    return { ...tx, commands: null };
+  }
+}
+
+export async function parseTransaction(digest: string): Promise<ParsedTransaction> {
+  const [raw, meta] = await Promise.all([fetchRawTx(digest), getTransactionMeta(digest)]);
+
+  const sender = meta.sender ?? 'Unknown';
+  const status = raw.status.success ? 'success' : 'failure';
+  const errorMessage = raw.status.error?.message;
 
   const gasCostSui = calcGasSui(raw);
-  const balanceChanges = await parseBalanceChanges(raw.balanceChanges ?? [], sender);
-  const objectChanges = parseObjectChanges(raw.objectChanges ?? []);
+  const balanceChanges = await parseBalanceChanges(raw.balanceChanges, sender);
+  const objectChanges = parseObjectChanges(raw);
   const commands = parseCommands(raw);
-  const { headline, headlineSubtext } = deriveHeadline(raw, balanceChanges, commands, sender);
+  const { headline, headlineSubtext } = deriveHeadline(raw, balanceChanges, objectChanges);
 
   return {
     digest,
     status,
     errorMessage,
     sender,
-    timestampMs: raw.timestampMs ?? null,
+    timestampMs: meta.timestampMs,
     gasCostSui,
     headline,
     headlineSubtext,
@@ -85,9 +103,8 @@ export async function parseTransaction(digest: string): Promise<ParsedTransactio
 
 // ── Gas ─────────────────────────────────────────────────────────────────────
 
-function calcGasSui(raw: SuiTransactionBlockResponse): string {
-  const g = raw.effects?.gasUsed;
-  if (!g) return '0';
+function calcGasSui(raw: RawTx): string {
+  const g = raw.effects.gasUsed;
   const total =
     BigInt(g.computationCost) +
     BigInt(g.storageCost) -
@@ -101,7 +118,7 @@ function calcGasSui(raw: SuiTransactionBlockResponse): string {
 // ── Balance changes ──────────────────────────────────────────────────────────
 
 async function parseBalanceChanges(
-  changes: BalanceChange[],
+  changes: SuiClientTypes.BalanceChange[],
   sender: string,
 ): Promise<ParsedBalanceChange[]> {
   // Dedupe coin types for batch metadata fetch
@@ -109,14 +126,10 @@ async function parseBalanceChanges(
   const metas = await Promise.all(coinTypes.map(getCoinMeta));
   const metaMap = Object.fromEntries(coinTypes.map((t, i) => [t, metas[i]]));
 
+  const senderNorm = sender.startsWith('0x') ? normalizeSuiAddress(sender) : sender;
   return changes
-    .filter((c) => {
-      // Only show changes for the sender's wallet
-      const owner = c.owner;
-      if (typeof owner === 'string') return false;
-      if ('AddressOwner' in owner) return owner.AddressOwner === sender;
-      return false;
-    })
+    // Only show changes for the sender's wallet
+    .filter((c) => normalizeSuiAddress(c.address) === senderNorm)
     .map((c) => {
       const meta = metaMap[c.coinType] ?? { symbol: '?', decimals: 9, name: '?' };
       const raw = BigInt(c.amount);
@@ -138,145 +151,126 @@ async function parseBalanceChanges(
 
 // ── Object changes ───────────────────────────────────────────────────────────
 
-function parseObjectChanges(changes: SuiObjectChange[]): ParsedObjectChange[] {
-  return changes
-    .filter((c) => c.type !== 'mutated') // mutated objects are noisy
-    .map((c) => {
-      const id = 'objectId' in c ? c.objectId : 'packageId' in c ? c.packageId : '';
-      const shortId = shortAddress(id);
-
-      switch (c.type) {
-        case 'created': {
-          const typeName = shortObjectType(c.objectType);
-          return { changeType: 'created', objectType: c.objectType, objectId: id, label: `Created ${typeName}` };
-        }
-        case 'deleted': {
-          const typeName = shortObjectType(c.objectType);
-          return { changeType: 'deleted', objectType: c.objectType, objectId: id, label: `Consumed ${typeName}` };
-        }
-        case 'transferred': {
-          const typeName = shortObjectType(c.objectType);
-          const recipient = 'recipient' in c && c.recipient ? recipientAddress(c.recipient) : undefined;
-          return {
-            changeType: 'transferred',
-            objectType: c.objectType,
-            objectId: id,
-            label: `Transferred ${typeName}${recipient ? ` to ${shortAddress(recipient)}` : ''}`,
-            recipient,
-          };
-        }
-        case 'wrapped': {
-          const typeName = shortObjectType(c.objectType);
-          return { changeType: 'wrapped', objectType: c.objectType, objectId: id, label: `Deposited ${typeName} into protocol` };
-        }
-        case 'published':
-          return { changeType: 'published', objectType: 'Move Package', objectId: id, label: `Published new Move package ${shortId}` };
-        default:
-          return { changeType: 'other', objectType: '', objectId: id, label: `Object change: ${shortId}` };
-      }
-    });
+// The GraphQL/gRPC APIs return raw effects instead of JSON-RPC "objectChanges".
+// Classify each changed object the same way JSON-RPC did.
+function classifyChange(c: SuiClientTypes.ChangedObject): ParsedObjectChange['changeType'] | 'mutated' {
+  if (c.outputState === 'PackageWrite') return c.idOperation === 'Created' ? 'published' : 'mutated';
+  if (c.idOperation === 'Created') return 'created';
+  if (c.idOperation === 'Deleted') return 'deleted';
+  if (c.inputState === 'Exists' && c.outputState === 'DoesNotExist') return 'wrapped';
+  if (c.inputState === 'Exists' && c.outputState === 'ObjectWrite') {
+    const before = c.inputOwner?.AddressOwner;
+    const after = c.outputOwner?.AddressOwner;
+    if (after && before !== after) return 'transferred';
+  }
+  // Unwrapped objects, accumulator writes and plain mutations are noise for this view.
+  return 'mutated';
 }
 
-function recipientAddress(recipient: unknown): string {
-  if (typeof recipient === 'string') return recipient;
-  if (typeof recipient === 'object' && recipient !== null) {
-    if ('AddressOwner' in recipient) return (recipient as { AddressOwner: string }).AddressOwner;
-    if ('ObjectOwner' in recipient) return (recipient as { ObjectOwner: string }).ObjectOwner;
-  }
-  return '';
+function parseObjectChanges(raw: RawTx): ParsedObjectChange[] {
+  return raw.effects.changedObjects.flatMap((c): ParsedObjectChange[] => {
+    const changeType = classifyChange(c);
+    if (changeType === 'mutated') return []; // mutated objects are noisy
+
+    const id = c.objectId;
+    const objectType = raw.objectTypes[id] ?? '';
+    const typeName = shortObjectType(objectType);
+
+    switch (changeType) {
+      case 'created':
+        return [{ changeType, objectType, objectId: id, label: `Created ${typeName}` }];
+      case 'deleted':
+        return [{ changeType, objectType, objectId: id, label: `Consumed ${typeName}` }];
+      case 'transferred': {
+        const recipient = c.outputOwner?.AddressOwner ?? undefined;
+        return [{
+          changeType,
+          objectType,
+          objectId: id,
+          label: `Transferred ${typeName}${recipient ? ` to ${shortAddress(recipient)}` : ''}`,
+          recipient,
+        }];
+      }
+      case 'wrapped':
+        return [{ changeType, objectType, objectId: id, label: `Deposited ${typeName} into protocol` }];
+      case 'published':
+        return [{ changeType, objectType: 'Move Package', objectId: id, label: `Published new Move package ${shortAddress(id)}` }];
+      default:
+        return [{ changeType: 'other', objectType: '', objectId: id, label: `Object change: ${shortAddress(id)}` }];
+    }
+  });
 }
 
 // ── Type guards ──────────────────────────────────────────────────────────────
 
-function isMoveCall(cmd: SuiTransaction): cmd is { MoveCall: MoveCallSuiTransaction } {
-  return 'MoveCall' in cmd;
-}
-
-function getMoveCall(cmd: SuiTransaction): MoveCallSuiTransaction | null {
-  return isMoveCall(cmd) ? cmd.MoveCall : null;
-}
-
-function getMoveCallsFrom(txList: SuiTransaction[]): MoveCallSuiTransaction[] {
-  return txList.flatMap((t) => (isMoveCall(t) ? [t.MoveCall] : []));
+function getMoveCallsFrom(commands: Command[] | null): MoveCall[] {
+  return (commands ?? []).flatMap((c) => ('MoveCall' in c ? [c.MoveCall] : []));
 }
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
-function parseCommands(raw: SuiTransactionBlockResponse): ParsedCommand[] {
-  const tx = raw.transaction?.data.transaction;
-  if (!tx || tx.kind !== 'ProgrammableTransaction') return [];
+function parseCommands(raw: RawTx): ParsedCommand[] {
+  if (!raw.commands) return [];
 
-  return tx.transactions.map((cmd, i) => {
-    const mc = getMoveCall(cmd);
-    if (mc) {
+  return raw.commands.map((cmd, i) => {
+    const index = i + 1;
+    if ('MoveCall' in cmd) {
+      const mc = cmd.MoveCall;
       const proto = lookupProtocol(mc.package);
       const action = lookupAction(mc.package, mc.module, mc.function);
       const label = action ?? (proto ? `${proto.name}: ${mc.module}::${mc.function}` : `${mc.module}::${mc.function}`);
-      return {
-        index: i + 1,
-        label,
-        detail: `${shortAddress(mc.package)}::${mc.module}::${mc.function}`,
-      };
+      return { index, label, detail: `${shortAddress(mc.package)}::${mc.module}::${mc.function}` };
     }
     if ('TransferObjects' in cmd) {
-      // TransferObjects: [objects[], recipient]
-      const count = cmd.TransferObjects[0].length;
-      return { index: i + 1, label: `Transfer ${count} object${count !== 1 ? 's' : ''} to recipient` };
+      const count = cmd.TransferObjects.objects.length;
+      return { index, label: `Transfer ${count} object${count !== 1 ? 's' : ''} to recipient` };
     }
     if ('SplitCoins' in cmd) {
-      // SplitCoins: [coin, amounts[]]
-      const count = cmd.SplitCoins[1].length;
-      return { index: i + 1, label: `Split coin into ${count} piece${count !== 1 ? 's' : ''}` };
+      const count = cmd.SplitCoins.amounts.length;
+      return { index, label: `Split coin into ${count} piece${count !== 1 ? 's' : ''}` };
     }
     if ('MergeCoins' in cmd) {
-      // MergeCoins: [destination, sources[]]
-      const count = cmd.MergeCoins[1].length;
-      return { index: i + 1, label: `Merge ${count} coin${count !== 1 ? 's' : ''} together` };
+      const count = cmd.MergeCoins.sources.length;
+      return { index, label: `Merge ${count} coin${count !== 1 ? 's' : ''} together` };
     }
     if ('Publish' in cmd) {
-      return { index: i + 1, label: 'Publish new Move package' };
+      return { index, label: 'Publish new Move package' };
     }
     if ('Upgrade' in cmd) {
-      // Upgrade: [modules[], packageId, ticket]
-      const pkgId = cmd.Upgrade[1];
-      return { index: i + 1, label: `Upgrade Move package ${shortAddress(pkgId)}` };
+      return { index, label: `Upgrade Move package ${shortAddress(cmd.Upgrade.package)}` };
     }
     if ('MakeMoveVec' in cmd) {
-      return { index: i + 1, label: 'Build vector of objects' };
+      return { index, label: 'Build vector of objects' };
     }
-    return { index: i + 1, label: 'Unknown command' };
+    return { index, label: 'Unknown command' };
   });
 }
 
 // ── Headline ─────────────────────────────────────────────────────────────────
 
 function deriveHeadline(
-  raw: SuiTransactionBlockResponse,
+  raw: RawTx,
   balanceChanges: ParsedBalanceChange[],
-  commands: ParsedCommand[],
-  sender: string,
+  objChanges: ParsedObjectChange[],
 ): { headline: string; headlineSubtext?: string } {
-  if (raw.effects?.status.status !== 'success') {
-    return { headline: 'Transaction Failed', headlineSubtext: raw.effects?.status.error };
+  if (!raw.status.success) {
+    return { headline: 'Transaction Failed', headlineSubtext: raw.status.error.message };
   }
 
-  const tx = raw.transaction?.data.transaction;
+  const moveCalls = getMoveCallsFrom(raw.commands);
 
   // ── Staking ──
-  if (tx?.kind === 'ProgrammableTransaction') {
-    const calls = getMoveCallsFrom(tx.transactions);
-    const stakeCall = calls.find((c) => c.module === 'sui_system' && c.function.includes('stake'));
-    if (stakeCall) {
-      const suiOut = balanceChanges.find((b) => b.direction === 'out' && b.symbol === 'SUI');
-      return {
-        headline: suiOut ? `Staked ${formatAbs(suiOut.amountRaw, 9)} SUI` : 'Staked SUI',
-        headlineSubtext: 'Delegated to a validator',
-      };
-    }
-    const unstakeCall = calls.find((c) => c.module === 'sui_system' && c.function.includes('withdraw'));
-    if (unstakeCall) {
-      return { headline: 'Unstaked SUI', headlineSubtext: 'Withdrew staked SUI' };
-    }
+  const stakeCall = moveCalls.find((c) => c.module === 'sui_system' && c.function.includes('stake'));
+  if (stakeCall) {
+    const suiOut = balanceChanges.find((b) => b.direction === 'out' && b.symbol === 'SUI');
+    return {
+      headline: suiOut ? `Staked ${formatAbs(suiOut.amountRaw, 9)} SUI` : 'Staked SUI',
+      headlineSubtext: 'Delegated to a validator',
+    };
+  }
+  const unstakeCall = moveCalls.find((c) => c.module === 'sui_system' && c.function.includes('withdraw'));
+  if (unstakeCall) {
+    return { headline: 'Unstaked SUI', headlineSubtext: 'Withdrew staked SUI' };
   }
 
   // ── Swap: sender lost one coin type and gained another ──
@@ -315,10 +309,9 @@ function deriveHeadline(
   }
 
   // ── Simple SUI transfer ──
-  if (tx?.kind === 'ProgrammableTransaction') {
-    const txList = tx.transactions;
-    const onlyTransfers = txList.every((t) => 'TransferObjects' in t || 'SplitCoins' in t);
-    const transferred = txList.filter((t) => 'TransferObjects' in t);
+  if (raw.commands) {
+    const onlyTransfers = raw.commands.every((c) => 'TransferObjects' in c || 'SplitCoins' in c);
+    const transferred = raw.commands.filter((c) => 'TransferObjects' in c);
     if (onlyTransfers && transferred.length > 0 && suiOut && inCoins.length === 0) {
       return {
         headline: `Sent ${formatAbs(suiOut.amountRaw, 9)} SUI`,
@@ -328,8 +321,7 @@ function deriveHeadline(
   }
 
   // ── NFT mint (created objects that aren't system types) ──
-  const objChanges = parseObjectChanges(raw.objectChanges ?? []);
-  const created = objChanges.filter((o) => o.changeType === 'created' && !o.objectType.startsWith('0x2::') && !o.objectType.startsWith('0x3::'));
+  const created = objChanges.filter((o) => o.changeType === 'created' && !isSystemType(o.objectType));
   if (created.length > 0) {
     const typeName = shortObjectType(created[0].objectType);
     return { headline: `Minted ${typeName}`, headlineSubtext: created.length > 1 ? `${created.length} objects created` : undefined };
@@ -342,19 +334,16 @@ function deriveHeadline(
   }
 
   // ── Protocol call fallback ──
-  if (tx?.kind === 'ProgrammableTransaction') {
-    const moveCalls = getMoveCallsFrom(tx.transactions);
-    if (moveCalls.length > 0) {
-      const mc = moveCalls[0];
-      const proto = lookupProtocol(mc.package);
-      const action = lookupAction(mc.package, mc.module, mc.function);
-      if (action) return { headline: action, headlineSubtext: proto?.name };
-      if (proto) return { headline: `Interacted with ${proto.name}`, headlineSubtext: `${mc.module}::${mc.function}` };
-      return {
-        headline: `Called ${mc.module}::${mc.function}`,
-        headlineSubtext: `on ${shortAddress(mc.package)}`,
-      };
-    }
+  if (moveCalls.length > 0) {
+    const mc = moveCalls[0];
+    const proto = lookupProtocol(mc.package);
+    const action = lookupAction(mc.package, mc.module, mc.function);
+    if (action) return { headline: action, headlineSubtext: proto?.name };
+    if (proto) return { headline: `Interacted with ${proto.name}`, headlineSubtext: `${mc.module}::${mc.function}` };
+    return {
+      headline: `Called ${mc.module}::${mc.function}`,
+      headlineSubtext: `on ${shortAddress(mc.package)}`,
+    };
   }
 
   return { headline: 'Transaction Executed' };
@@ -362,17 +351,20 @@ function deriveHeadline(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function findDexName(raw: SuiTransactionBlockResponse): string | undefined {
-  const tx = raw.transaction?.data.transaction;
-  if (tx?.kind !== 'ProgrammableTransaction') return undefined;
-  for (const cmd of tx.transactions) {
-    const mc = getMoveCall(cmd);
-    if (mc) {
-      const proto = lookupProtocol(mc.package);
-      if (proto?.category === 'dex') return proto.name;
-    }
+function findDexName(raw: RawTx): string | undefined {
+  for (const mc of getMoveCallsFrom(raw.commands)) {
+    const proto = lookupProtocol(mc.package);
+    if (proto?.category === 'dex') return proto.name;
   }
   return undefined;
+}
+
+// GraphQL returns fully padded type names ("0x000…0002::coin::Coin"), unlike JSON-RPC ("0x2::coin::Coin").
+const SYSTEM_PACKAGES = new Set(['0x1', '0x2', '0x3'].map((a) => normalizeSuiAddress(a)));
+
+function isSystemType(objectType: string): boolean {
+  const pkg = objectType.split('::')[0];
+  return pkg.startsWith('0x') && SYSTEM_PACKAGES.has(normalizeSuiAddress(pkg));
 }
 
 function shortAddress(addr: string): string {

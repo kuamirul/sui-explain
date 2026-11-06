@@ -58,7 +58,7 @@ export async function getCoinMeta(coinType: string): Promise<CoinMeta> {
   if (cache.has(normalized)) return cache.get(normalized)!;
 
   try {
-    const meta = await suiClient.getCoinMetadata({ coinType: normalized });
+    const { coinMetadata: meta } = await suiClient.core.getCoinMetadata({ coinType: normalized });
     if (meta) {
       const result: CoinMeta = {
         symbol: meta.symbol,
