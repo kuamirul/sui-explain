@@ -1,0 +1,157 @@
+{
+  "digest": "3pFVDk3Hm4FVYDVDV1Qdu3Q1LFd8cL2FFe5FGHkcDsho",
+  "sender": "0xa17d47e4eed33278b4fc08010b2d0258123cc63cb47a13fd96a1fd31c44a3744",
+  "timestampMs": "1794445959621",
+  "status": {
+    "success": true,
+    "error": null
+  },
+  "gasUsed": {
+    "computationCost": "100000",
+    "storageCost": "909378000",
+    "storageRebate": "907995191",
+    "nonRefundableStorageFee": "90809"
+  },
+  "gasOwner": "0xa17d47e4eed33278b4fc08010b2d0258123cc63cb47a13fd96a1fd31c44a3744",
+  "changedObjects": [
+    {
+      "objectId": "0x0000000000000000000000000000000000000000000000000000000000000005",
+      "inputState": "Exists",
+      "inputVersion": "1082732777",
+      "inputDigest": "Bi63D6fMvAsp9ehjBDwJShP6xp7PcaiZ5JbBBp1keXsC",
+      "inputOwner": {
+        "Shared": {
+          "initialSharedVersion": "1"
+        },
+        "$kind": "Shared"
+      },
+      "outputState": "ObjectWrite",
+      "outputVersion": "1082732778",
+      "outputDigest": "EYh7R2XKBshXBxhXPQNnk37xWkcCQwb2PT2hYhDt1jL9",
+      "outputOwner": {
+        "Shared": {
+          "initialSharedVersion": "1"
+        },
+        "$kind": "Shared"
+      },
+      "idOperation": "None"
+    },
+    {
+      "objectId": "0x5b890eaf2abcfa2ab90b77b8e6f3d5d8609586c3e583baf3dccd5af17edf48d1",
+      "inputState": "Exists",
+      "inputVersion": "1082730836",
+      "inputDigest": "BKr5EAYhFq1tyKRAJFgSV1gQUVEWqgB6S34u92hmpBpA",
+      "inputOwner": {
+        "ObjectOwner": "0x0000000000000000000000000000000000000000000000000000000000000005",
+        "$kind": "ObjectOwner"
+      },
+      "outputState": "ObjectWrite",
+      "outputVersion": "1082732778",
+      "outputDigest": "HtZqTAJF6vYPwyi9CVbbTfx6xia9ZQ5tEqsZdfFP5Uqh",
+      "outputOwner": {
+        "ObjectOwner": "0x0000000000000000000000000000000000000000000000000000000000000005",
+        "$kind": "ObjectOwner"
+      },
+      "idOperation": "None"
+    },
+    {
+      "objectId": "0xda4ef285726bf2c71de69a1769a590be9406b69304053157f4ddf852ad1972a2",
+      "inputState": "Exists",
+      "inputVersion": "1082688049",
+      "inputDigest": "4MtLhCAPbErRwDCCXBEhkA7YtJEzLmLb4ivRrfYTs4RX",
+      "inputOwner": {
+        "AddressOwner": "0xa17d47e4eed33278b4fc08010b2d0258123cc63cb47a13fd96a1fd31c44a3744",
+        "$kind": "AddressOwner"
+      },
+      "outputState": "ObjectWrite",
+      "outputVersion": "1082732778",
+      "outputDigest": "DhrkGkHEM8p5z6WsGUaP499pPwzVfkz9XEpTEiFnppZ8",
+      "outputOwner": {
+        "AddressOwner": "0xa17d47e4eed33278b4fc08010b2d0258123cc63cb47a13fd96a1fd31c44a3744",
+        "$kind": "AddressOwner"
+      },
+      "idOperation": "None"
+    },
+    {
+      "objectId": "0xf331dff2896d8234c5583319c0d42ea7fa040f590a43dbaf964d742ab1edd222",
+      "inputState": "DoesNotExist",
+      "inputVersion": null,
+      "inputDigest": null,
+      "inputOwner": null,
+      "outputState": "ObjectWrite",
+      "outputVersion": "1082732778",
+      "outputDigest": "3zkLiXYDgwvFc77UrkoUAkmeV9Ap4HVRmM3y8Cq7bAh1",
+      "outputOwner": {
+        "AddressOwner": "0xa17d47e4eed33278b4fc08010b2d0258123cc63cb47a13fd96a1fd31c44a3744",
+        "$kind": "AddressOwner"
+      },
+      "idOperation": "Created"
+    }
+  ],
+  "balanceChanges": [
+    {
+      "coinType": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI",
+      "address": "0xa17d47e4eed33278b4fc08010b2d0258123cc63cb47a13fd96a1fd31c44a3744",
+      "amount": "-7622779540129"
+    }
+  ],
+  "objectTypes": {
+    "0x0000000000000000000000000000000000000000000000000000000000000005": "0x0000000000000000000000000000000000000000000000000000000000000003::sui_system::SuiSystemState",
+    "0x5b890eaf2abcfa2ab90b77b8e6f3d5d8609586c3e583baf3dccd5af17edf48d1": "0x0000000000000000000000000000000000000000000000000000000000000002::dynamic_field::Field<u64,0x0000000000000000000000000000000000000000000000000000000000000003::sui_system_state_inner::SuiSystemStateInnerV2>",
+    "0xda4ef285726bf2c71de69a1769a590be9406b69304053157f4ddf852ad1972a2": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI>",
+    "0xf331dff2896d8234c5583319c0d42ea7fa040f590a43dbaf964d742ab1edd222": "0x0000000000000000000000000000000000000000000000000000000000000003::staking_pool::StakedSui"
+  },
+  "commands": [
+    {
+      "$kind": "SplitCoins",
+      "SplitCoins": {
+        "coin": {
+          "$kind": "GasCoin",
+          "GasCoin": true
+        },
+        "amounts": [
+          {
+            "$kind": "Input",
+            "Input": 0
+          }
+        ]
+      }
+    },
+    {
+      "$kind": "MoveCall",
+      "MoveCall": {
+        "package": "0x0000000000000000000000000000000000000000000000000000000000000003",
+        "module": "sui_system",
+        "function": "request_add_stake",
+        "typeArguments": [],
+        "arguments": [
+          {
+            "$kind": "Input",
+            "Input": 1
+          },
+          {
+            "$kind": "NestedResult",
+            "NestedResult": [
+              0,
+              0
+            ]
+          },
+          {
+            "$kind": "Input",
+            "Input": 2
+          }
+        ]
+      }
+    }
+  ],
+  "originalPackages": {
+    "0x0000000000000000000000000000000000000000000000000000000000000003": "0x0000000000000000000000000000000000000000000000000000000000000003"
+  },
+  "coins": {
+    "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI": {
+      "symbol": "SUI",
+      "decimals": 9,
+      "name": "Sui"
+    }
+  }
+}

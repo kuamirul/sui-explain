@@ -1,0 +1,110 @@
+{
+  "digest": "2zZaEDySCpNFKEaZAF6Qga4mcMAVMtrLyoMMUGiBV325",
+  "sender": "0xb5be5fcc08ba652f06bce6af576184bb1cf50cba233ef3157df3107f0d67db77",
+  "timestampMs": "1794445998770",
+  "status": {
+    "success": true,
+    "error": null
+  },
+  "gasUsed": {
+    "computationCost": "100000",
+    "storageCost": "1976000",
+    "storageRebate": "987901",
+    "nonRefundableStorageFee": "99"
+  },
+  "gasOwner": "0xb5be5fcc08ba652f06bce6af576184bb1cf50cba233ef3157df3107f0d67db77",
+  "changedObjects": [
+    {
+      "objectId": "0x8e03a0e0652a73b218e68316e1a3e14a21fb60b10daac9463202d210b5be0fdb",
+      "inputState": "Exists",
+      "inputVersion": "973422582",
+      "inputDigest": "8F4wbmXdXmRwebRUim5Y4xp9nbTbcYjy3bCGoUCmi8dr",
+      "inputOwner": {
+        "AddressOwner": "0xb5be5fcc08ba652f06bce6af576184bb1cf50cba233ef3157df3107f0d67db77",
+        "$kind": "AddressOwner"
+      },
+      "outputState": "ObjectWrite",
+      "outputVersion": "973422583",
+      "outputDigest": "4ociJN7FfxxgqGnRJfmHS77hzZezxQ6aSDVKFS2kTao3",
+      "outputOwner": {
+        "AddressOwner": "0xb5be5fcc08ba652f06bce6af576184bb1cf50cba233ef3157df3107f0d67db77",
+        "$kind": "AddressOwner"
+      },
+      "idOperation": "None"
+    },
+    {
+      "objectId": "0x9cb252e1eef8e997ba9994929512b782318ee8afd54bf670faa86916f167cb8c",
+      "inputState": "DoesNotExist",
+      "inputVersion": null,
+      "inputDigest": null,
+      "inputOwner": null,
+      "outputState": "ObjectWrite",
+      "outputVersion": "973422583",
+      "outputDigest": "Ak1cL3UjKFWQcmdkW6iDwMTD4drwzRqtx3mZUyaNKnge",
+      "outputOwner": {
+        "AddressOwner": "0xb284d2baa3b14cb74c01835e4e1ac4f0b03b83652db4e690232c1b932c1703c8",
+        "$kind": "AddressOwner"
+      },
+      "idOperation": "Created"
+    }
+  ],
+  "balanceChanges": [
+    {
+      "coinType": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI",
+      "address": "0xb284d2baa3b14cb74c01835e4e1ac4f0b03b83652db4e690232c1b932c1703c8",
+      "amount": "24384237054"
+    },
+    {
+      "coinType": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI",
+      "address": "0xb5be5fcc08ba652f06bce6af576184bb1cf50cba233ef3157df3107f0d67db77",
+      "amount": "-24385325153"
+    }
+  ],
+  "objectTypes": {
+    "0x8e03a0e0652a73b218e68316e1a3e14a21fb60b10daac9463202d210b5be0fdb": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI>",
+    "0x9cb252e1eef8e997ba9994929512b782318ee8afd54bf670faa86916f167cb8c": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI>"
+  },
+  "commands": [
+    {
+      "$kind": "SplitCoins",
+      "SplitCoins": {
+        "coin": {
+          "$kind": "GasCoin",
+          "GasCoin": true
+        },
+        "amounts": [
+          {
+            "$kind": "Input",
+            "Input": 0
+          }
+        ]
+      }
+    },
+    {
+      "$kind": "TransferObjects",
+      "TransferObjects": {
+        "objects": [
+          {
+            "$kind": "NestedResult",
+            "NestedResult": [
+              0,
+              0
+            ]
+          }
+        ],
+        "address": {
+          "$kind": "Input",
+          "Input": 1
+        }
+      }
+    }
+  ],
+  "originalPackages": {},
+  "coins": {
+    "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI": {
+      "symbol": "SUI",
+      "decimals": 9,
+      "name": "Sui"
+    }
+  }
+}

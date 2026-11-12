@@ -1,8 +1,8 @@
 import type { SuiClientTypes } from '@mysten/sui/client';
 import { normalizeSuiAddress } from '@mysten/sui/utils';
-import { suiClient, getTransactionMeta } from './sui';
-import { getCoinMeta, formatAmount } from './coins';
-import { lookupProtocol, lookupAction } from './protocols';
+import { formatAmount } from './coins';
+import { lookupProtocol, lookupAction, type ProtocolInfo } from './protocols';
+import { fetchSnapshot, type MoveCall, type TxSnapshot } from './snapshot';
 
 export interface ParsedBalanceChange {
   owner: string;
@@ -42,97 +42,58 @@ export interface ParsedTransaction {
   commands: ParsedCommand[];
 }
 
-// ── Fetching ─────────────────────────────────────────────────────────────────
+const SUI_TYPE = normalizeType('0x2::sui::SUI');
 
-type Command = SuiClientTypes.TransactionData['commands'][number];
-type MoveCall = Extract<Command, { MoveCall: unknown }>['MoveCall'];
-
-// Normalized view of a transaction, independent of the API transport.
-interface RawTx {
-  status: SuiClientTypes.ExecutionStatus;
-  effects: SuiClientTypes.TransactionEffects;
-  balanceChanges: SuiClientTypes.BalanceChange[];
-  objectTypes: Record<string, string>;
-  // null for non-programmable (system) transactions
-  commands: Command[] | null;
-}
-
-const NOT_PROGRAMMABLE = 'Only programmable transactions are supported';
-
-async function fetchRawTx(digest: string): Promise<RawTx> {
-  const base = { effects: true, balanceChanges: true, objectTypes: true } as const;
-  try {
-    const res = await suiClient.core.getTransaction({ digest, include: { ...base, transaction: true } });
-    const tx = res.Transaction ?? res.FailedTransaction;
-    return { ...tx, commands: tx.transaction.commands };
-  } catch (err) {
-    // The SDK cannot decode system transactions (e.g. epoch change). Load them without commands.
-    if (!(err instanceof Error) || !err.message.includes(NOT_PROGRAMMABLE)) throw err;
-    const res = await suiClient.core.getTransaction({ digest, include: base });
-    const tx = res.Transaction ?? res.FailedTransaction;
-    return { ...tx, commands: null };
-  }
-}
-
+/** Fetches a transaction from mainnet and explains it. */
 export async function parseTransaction(digest: string): Promise<ParsedTransaction> {
-  const [raw, meta] = await Promise.all([fetchRawTx(digest), getTransactionMeta(digest)]);
+  return explainTransaction(await fetchSnapshot(digest));
+}
 
-  const sender = meta.sender ?? 'Unknown';
-  const status = raw.status.success ? 'success' : 'failure';
-  const errorMessage = raw.status.error?.message;
-
-  const gasCostSui = calcGasSui(raw);
-  const balanceChanges = await parseBalanceChanges(raw.balanceChanges, sender);
-  const objectChanges = parseObjectChanges(raw);
-  const commands = parseCommands(raw);
-  const { headline, headlineSubtext } = deriveHeadline(raw, balanceChanges, objectChanges);
+/** Explains a fetched transaction. Pure: no network access. */
+export function explainTransaction(s: TxSnapshot): ParsedTransaction {
+  const sender = s.sender ?? 'Unknown';
+  const balanceChanges = parseBalanceChanges(s, sender);
+  const objectChanges = parseObjectChanges(s);
+  const { headline, headlineSubtext } = deriveHeadline(s, balanceChanges, objectChanges);
 
   return {
-    digest,
-    status,
-    errorMessage,
+    digest: s.digest,
+    status: s.status.success ? 'success' : 'failure',
+    errorMessage: s.status.error?.message,
     sender,
-    timestampMs: meta.timestampMs,
-    gasCostSui,
+    timestampMs: s.timestampMs,
+    gasCostSui: formatAbs(clampToZero(netGasMist(s)), 9),
     headline,
     headlineSubtext,
     balanceChanges,
     objectChanges,
-    commands,
+    commands: parseCommands(s),
   };
 }
 
 // ── Gas ─────────────────────────────────────────────────────────────────────
 
-function calcGasSui(raw: RawTx): string {
-  const g = raw.effects.gasUsed;
-  const total =
-    BigInt(g.computationCost) +
-    BigInt(g.storageCost) -
-    BigInt(g.storageRebate);
-  const abs = total < 0n ? 0n : total;
-  const whole = abs / 1_000_000_000n;
-  const frac = (abs % 1_000_000_000n).toString().padStart(9, '0').replace(/0+$/, '');
-  return frac ? `${whole}.${frac}` : `${whole}`;
+/** Net gas in MIST: computation + storage - rebate. Negative when the rebate is larger. */
+function netGasMist(s: TxSnapshot): bigint {
+  const g = s.gasUsed;
+  return BigInt(g.computationCost) + BigInt(g.storageCost) - BigInt(g.storageRebate);
+}
+
+/** Net gas the sender paid. Zero for sponsored transactions, where someone else paid. */
+function gasPaidBySender(s: TxSnapshot): bigint {
+  if (!s.sender || !s.gasOwner) return 0n;
+  return normalizeSuiAddress(s.gasOwner) === normalizeSuiAddress(s.sender) ? netGasMist(s) : 0n;
 }
 
 // ── Balance changes ──────────────────────────────────────────────────────────
 
-async function parseBalanceChanges(
-  changes: SuiClientTypes.BalanceChange[],
-  sender: string,
-): Promise<ParsedBalanceChange[]> {
-  // Dedupe coin types for batch metadata fetch
-  const coinTypes = [...new Set(changes.map((c) => c.coinType))];
-  const metas = await Promise.all(coinTypes.map(getCoinMeta));
-  const metaMap = Object.fromEntries(coinTypes.map((t, i) => [t, metas[i]]));
-
+function parseBalanceChanges(s: TxSnapshot, sender: string): ParsedBalanceChange[] {
   const senderNorm = sender.startsWith('0x') ? normalizeSuiAddress(sender) : sender;
-  return changes
+  return s.balanceChanges
     // Only show changes for the sender's wallet
     .filter((c) => normalizeSuiAddress(c.address) === senderNorm)
     .map((c) => {
-      const meta = metaMap[c.coinType] ?? { symbol: '?', decimals: 9, name: '?' };
+      const meta = s.coins[c.coinType] ?? { symbol: '?', decimals: 9, name: '?' };
       const raw = BigInt(c.amount);
       return {
         owner: sender,
@@ -149,6 +110,23 @@ async function parseBalanceChanges(
       if (a.direction === b.direction) return 0;
       return a.direction === 'out' ? -1 : 1;
     });
+}
+
+/**
+ * Token flows for the headline. The sender's SUI change includes the gas fee, so a
+ * 20 SUI swap shows as -20.0014 SUI. Add the fee back to get the amount the user
+ * actually moved. Drop SUI if only gas was spent.
+ *
+ * The token-changes card still shows the real wallet change, fee included.
+ */
+function flowsExcludingGas(s: TxSnapshot, changes: ParsedBalanceChange[]): ParsedBalanceChange[] {
+  const gas = gasPaidBySender(s);
+  return changes.flatMap((b) => {
+    if (normalizeType(b.coinType) !== SUI_TYPE) return [b];
+    const amountRaw = b.amountRaw + gas;
+    if (amountRaw === 0n) return [];
+    return [{ ...b, amountRaw, direction: amountRaw > 0n ? 'in' : 'out' }];
+  });
 }
 
 // ── Object changes ───────────────────────────────────────────────────────────
@@ -169,13 +147,13 @@ function classifyChange(c: SuiClientTypes.ChangedObject): ParsedObjectChange['ch
   return 'mutated';
 }
 
-function parseObjectChanges(raw: RawTx): ParsedObjectChange[] {
-  return raw.effects.changedObjects.flatMap((c): ParsedObjectChange[] => {
+function parseObjectChanges(s: TxSnapshot): ParsedObjectChange[] {
+  return s.changedObjects.flatMap((c): ParsedObjectChange[] => {
     const changeType = classifyChange(c);
     if (changeType === 'mutated') return []; // mutated objects are noisy
 
     const id = c.objectId;
-    const objectType = raw.objectTypes[id] ?? '';
+    const objectType = s.objectTypes[id] ?? '';
     const typeName = shortObjectType(objectType);
 
     switch (changeType) {
@@ -203,23 +181,37 @@ function parseObjectChanges(raw: RawTx): ParsedObjectChange[] {
   });
 }
 
-// ── Type guards ──────────────────────────────────────────────────────────────
+// ── Move calls and protocols ─────────────────────────────────────────────────
 
-function getMoveCallsFrom(commands: Command[] | null): MoveCall[] {
-  return (commands ?? []).flatMap((c) => ('MoveCall' in c ? [c.MoveCall] : []));
+function getMoveCalls(s: TxSnapshot): MoveCall[] {
+  return (s.commands ?? []).flatMap((c) => ('MoveCall' in c ? [c.MoveCall] : []));
+}
+
+/** Original package ID for a called package. Upgraded packages have a new ID per version. */
+function originalPackage(s: TxSnapshot, pkg: string): string {
+  const id = normalizeSuiAddress(pkg);
+  return s.originalPackages[id] ?? id;
+}
+
+function protocolOf(s: TxSnapshot, mc: MoveCall): ProtocolInfo | undefined {
+  return lookupProtocol(originalPackage(s, mc.package));
+}
+
+function actionOf(s: TxSnapshot, mc: MoveCall): string | undefined {
+  return lookupAction(originalPackage(s, mc.package), mc.module, mc.function);
 }
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
-function parseCommands(raw: RawTx): ParsedCommand[] {
-  if (!raw.commands) return [];
+function parseCommands(s: TxSnapshot): ParsedCommand[] {
+  if (!s.commands) return [];
 
-  return raw.commands.map((cmd, i) => {
+  return s.commands.map((cmd, i) => {
     const index = i + 1;
     if ('MoveCall' in cmd) {
       const mc = cmd.MoveCall;
-      const proto = lookupProtocol(mc.package);
-      const action = lookupAction(mc.package, mc.module, mc.function);
+      const proto = protocolOf(s, mc);
+      const action = actionOf(s, mc);
       const label = action ?? (proto ? `${proto.name}: ${mc.module}::${mc.function}` : `${mc.module}::${mc.function}`);
       return { index, label, detail: `${shortAddress(mc.package)}::${mc.module}::${mc.function}` };
     }
@@ -251,20 +243,22 @@ function parseCommands(raw: RawTx): ParsedCommand[] {
 // ── Headline ─────────────────────────────────────────────────────────────────
 
 function deriveHeadline(
-  raw: RawTx,
+  s: TxSnapshot,
   balanceChanges: ParsedBalanceChange[],
   objChanges: ParsedObjectChange[],
 ): { headline: string; headlineSubtext?: string } {
-  if (!raw.status.success) {
-    return { headline: 'Transaction Failed', headlineSubtext: raw.status.error.message };
+  if (!s.status.success) {
+    return { headline: 'Transaction Failed', headlineSubtext: s.status.error.message };
   }
 
-  const moveCalls = getMoveCallsFrom(raw.commands);
+  const moveCalls = getMoveCalls(s);
+  const flows = flowsExcludingGas(s, balanceChanges);
+  const isSui = (b: ParsedBalanceChange) => normalizeType(b.coinType) === SUI_TYPE;
+  const suiOut = flows.find((b) => b.direction === 'out' && isSui(b));
 
   // ── Staking ──
   const stakeCall = moveCalls.find((c) => c.module === 'sui_system' && c.function.includes('stake'));
   if (stakeCall) {
-    const suiOut = balanceChanges.find((b) => b.direction === 'out' && b.symbol === 'SUI');
     return {
       headline: suiOut ? `Staked ${formatAbs(suiOut.amountRaw, 9)} SUI` : 'Staked SUI',
       headlineSubtext: 'Delegated to a validator',
@@ -275,14 +269,18 @@ function deriveHeadline(
     return { headline: 'Unstaked SUI', headlineSubtext: 'Withdrew staked SUI' };
   }
 
+  // A labeled lending or yield action with no DEX involved is not a swap, even if the
+  // sender gave one token and got another (for example USDC in, sUSDC receipt out).
+  const dex = findDexName(s);
+  const labeled = findLabeledCall(s, moveCalls);
+  if (labeled && !dex) return actionHeadline(s, labeled);
+
   // ── Swap: sender lost one coin type and gained another ──
-  const outCoins = balanceChanges.filter((b) => b.direction === 'out' && b.symbol !== 'SUI');
-  const inCoins = balanceChanges.filter((b) => b.direction === 'in');
-  const suiOut = balanceChanges.find((b) => b.direction === 'out' && b.symbol === 'SUI');
+  const outCoins = flows.filter((b) => b.direction === 'out' && !isSui(b));
+  const inCoins = flows.filter((b) => b.direction === 'in');
 
   // Swap SUI → other
   if (suiOut && inCoins.length === 1 && outCoins.length === 0) {
-    const dex = findDexName(raw);
     const got = inCoins[0];
     return {
       headline: `Swapped ${formatAbs(suiOut.amountRaw, 9)} SUI for ${formatAbs(got.amountRaw, got.decimals)} ${got.symbol}`,
@@ -290,8 +288,7 @@ function deriveHeadline(
     };
   }
   // Swap other → SUI
-  if (outCoins.length === 1 && inCoins.length === 1 && inCoins[0].symbol === 'SUI') {
-    const dex = findDexName(raw);
+  if (outCoins.length === 1 && inCoins.length === 1 && isSui(inCoins[0])) {
     const sold = outCoins[0];
     const got = inCoins[0];
     return {
@@ -301,7 +298,6 @@ function deriveHeadline(
   }
   // Swap token → token
   if (outCoins.length === 1 && inCoins.length === 1) {
-    const dex = findDexName(raw);
     const sold = outCoins[0];
     const got = inCoins[0];
     return {
@@ -311,9 +307,9 @@ function deriveHeadline(
   }
 
   // ── Simple SUI transfer ──
-  if (raw.commands) {
-    const onlyTransfers = raw.commands.every((c) => 'TransferObjects' in c || 'SplitCoins' in c);
-    const transferred = raw.commands.filter((c) => 'TransferObjects' in c);
+  if (s.commands) {
+    const onlyTransfers = s.commands.every((c) => 'TransferObjects' in c || 'SplitCoins' in c);
+    const transferred = s.commands.filter((c) => 'TransferObjects' in c);
     if (onlyTransfers && transferred.length > 0 && suiOut && inCoins.length === 0) {
       return {
         headline: `Sent ${formatAbs(suiOut.amountRaw, 9)} SUI`,
@@ -321,6 +317,9 @@ function deriveHeadline(
       };
     }
   }
+
+  // ── Labeled protocol action (for example "Open position on Cetus") ──
+  if (labeled) return actionHeadline(s, labeled);
 
   // ── NFT mint (created objects that aren't system types) ──
   const created = objChanges.filter((o) => o.changeType === 'created' && !isSystemType(o.objectType));
@@ -336,11 +335,9 @@ function deriveHeadline(
   }
 
   // ── Protocol call fallback ──
-  if (moveCalls.length > 0) {
-    const mc = moveCalls[0];
-    const proto = lookupProtocol(mc.package);
-    const action = lookupAction(mc.package, mc.module, mc.function);
-    if (action) return { headline: action, headlineSubtext: proto?.name };
+  const mc = pickHeadlineCall(s, moveCalls);
+  if (mc) {
+    const proto = protocolOf(s, mc);
     if (proto) return { headline: `Interacted with ${proto.name}`, headlineSubtext: `${mc.module}::${mc.function}` };
     return {
       headline: `Called ${mc.module}::${mc.function}`,
@@ -351,14 +348,47 @@ function deriveHeadline(
   return { headline: 'Transaction Executed' };
 }
 
+function isNonSystemProtocol(s: TxSnapshot, mc: MoveCall): boolean {
+  const proto = protocolOf(s, mc);
+  return proto !== undefined && proto.category !== 'system';
+}
+
+/** First call with a human label, from a non-system protocol. */
+function findLabeledCall(s: TxSnapshot, calls: MoveCall[]): MoveCall | undefined {
+  return calls.find((mc) => isNonSystemProtocol(s, mc) && actionOf(s, mc) !== undefined);
+}
+
+function actionHeadline(s: TxSnapshot, mc: MoveCall): { headline: string; headlineSubtext?: string } {
+  return { headline: actionOf(s, mc)!, headlineSubtext: protocolOf(s, mc)?.name };
+}
+
+/**
+ * Picks the Move call to describe when no rule matched and no call has a label.
+ * The first call is often a helper (for example `0x1::option::some`), so prefer, in order:
+ * 1. any call to a known non-system protocol
+ * 2. any call outside the system packages
+ * 3. the first call
+ */
+function pickHeadlineCall(s: TxSnapshot, calls: MoveCall[]): MoveCall | undefined {
+  return (
+    calls.find((mc) => isNonSystemProtocol(s, mc)) ??
+    calls.find((mc) => !SYSTEM_PACKAGES.has(normalizeSuiAddress(mc.package))) ??
+    calls[0]
+  );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function findDexName(raw: RawTx): string | undefined {
-  for (const mc of getMoveCallsFrom(raw.commands)) {
-    const proto = lookupProtocol(mc.package);
-    if (proto?.category === 'dex') return proto.name;
-  }
-  return undefined;
+/**
+ * Name for "via …". Aggregators wrap each other and the DEXes they route to
+ * (7K settles a swap routed through the Cetus Aggregator router), and the
+ * outermost one runs last. So: the last aggregator call, else the first DEX call.
+ */
+function findDexName(s: TxSnapshot): string | undefined {
+  const dexes = getMoveCalls(s)
+    .map((mc) => protocolOf(s, mc))
+    .filter((p): p is ProtocolInfo => p?.category === 'dex');
+  return dexes.filter((p) => p.aggregator).at(-1)?.name ?? dexes[0]?.name;
 }
 
 // GraphQL returns fully padded type names ("0x000…0002::coin::Coin"), unlike JSON-RPC ("0x2::coin::Coin").
@@ -367,6 +397,12 @@ const SYSTEM_PACKAGES = new Set(['0x1', '0x2', '0x3'].map((a) => normalizeSuiAdd
 function isSystemType(objectType: string): boolean {
   const pkg = objectType.split('::')[0];
   return pkg.startsWith('0x') && SYSTEM_PACKAGES.has(normalizeSuiAddress(pkg));
+}
+
+/** "0x2::sui::SUI" -> "0x000…0002::sui::SUI", so coin types compare equal in either spelling. */
+function normalizeType(type: string): string {
+  const [pkg, ...rest] = type.split('::');
+  return pkg.startsWith('0x') ? [normalizeSuiAddress(pkg), ...rest].join('::') : type;
 }
 
 function shortAddress(addr: string): string {
@@ -380,6 +416,10 @@ function shortObjectType(objectType: string): string {
   // "0xabc::module::TypeName<...>" → "TypeName"
   const match = objectType.match(/::([A-Za-z0-9_]+)(?:<|$)/);
   return match?.[1] ?? objectType.split('::').pop() ?? objectType;
+}
+
+function clampToZero(n: bigint): bigint {
+  return n < 0n ? 0n : n;
 }
 
 function formatAbs(raw: bigint, decimals: number): string {

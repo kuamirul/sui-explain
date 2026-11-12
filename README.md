@@ -6,8 +6,9 @@ No wallet connection is needed.
 
 ## Features
 
-- **Headline summary.** Rule-based detection of common actions: transfers, swaps, staking, unstaking, mints, and package publishes.
-- **Optional AI headline.** If a Google AI key is set, Gemini 1.5 Flash rewrites the headline in more natural language.
+- **Headline summary.** Rule-based detection of common actions: transfers, swaps, staking, unstaking, mints, and package publishes. Amounts exclude the gas fee.
+- **Protocol labels.** Known actions on DeepBook, Cetus, Turbos, Aftermath, Bluefin, 7K, Cetus Aggregator, Suilend, Navi, Scallop, and AlphaFi.
+- **Optional AI headline.** If a Google AI key is set, a Gemini model rewrites the headline in more natural language.
 - **Token changes.** Balance changes for the sender's wallet, with correct decimals and symbols from on-chain coin metadata.
 - **Step list.** Each command in the programmable transaction block, with known protocol actions labeled by name.
 - **Object changes.** Objects created, consumed, transferred, wrapped, or published.
@@ -20,12 +21,24 @@ The page `app/tx/[digest]/page.tsx` renders on the server, so no data is fetched
 
 | File | Purpose |
 | --- | --- |
-| `lib/sui.ts` | Sui GraphQL client and a small query for sender and timestamp |
-| `lib/parser.ts` | Fetches a transaction and converts it into the `ParsedTransaction` shape the UI uses |
+| `lib/sui.ts` | Sui GraphQL client, sender and timestamp query, and original package ID lookup |
+| `lib/snapshot.ts` | Fetches everything about one transaction into a plain-JSON `TxSnapshot` |
+| `lib/parser.ts` | Converts a `TxSnapshot` into the `ParsedTransaction` shape the UI uses. No network access |
 | `lib/coins.ts` | Coin metadata lookup with a built-in table and an in-memory cache |
-| `lib/protocols.ts` | Known package IDs and human labels for their functions |
+| `lib/protocols.ts` | Known protocols, keyed by original package ID, with labels for their functions |
 | `lib/llm.ts` | Optional Gemini headline rewrite |
 | `components/` | UI cards for summary, token changes, steps, and object changes |
+| `tests/` | Parser tests on saved mainnet transactions (`tests/fixtures/`) |
+| `scripts/capture-fixtures.ts` | Saves mainnet transactions as test fixtures |
+
+### Protocol matching
+
+Every Sui package upgrade creates a new package ID, and transactions call the newest one.
+The app resolves each called package to its original (version 1) ID through GraphQL, then looks that up in `lib/protocols.ts`.
+So a protocol upgrade does not break its labels.
+
+To add a protocol, add its original package ID and labels to `lib/protocols.ts`.
+Use function names that appear in real mainnet transactions.
 
 ### Data source
 
@@ -57,6 +70,7 @@ Requirements: Node.js 18.17 or later and npm.
 | Variable | Required | Description |
 | --- | --- | --- |
 | `GOOGLE_AI_API_KEY` | No | Enables the AI headline. Without it, the app shows the rule-based headline only. |
+| `GEMINI_MODEL` | No | Model for the AI headline. Default: `gemini-flash-lite-latest`, an alias Google keeps on its newest Flash-Lite model. |
 | `SUI_GRAPHQL_URL` | No | Overrides the GraphQL endpoint. Default: `https://graphql.mainnet.sui.io/graphql`. |
 
 ## Scripts
@@ -67,6 +81,8 @@ Requirements: Node.js 18.17 or later and npm.
 | `npm run build` | Build for production |
 | `npm run start` | Serve the production build |
 | `npm run lint` | Run ESLint |
+| `npm test` | Run the parser tests (no network access needed) |
+| `npm run fixtures` | Re-download the test fixtures from mainnet |
 
 ## Deploy
 

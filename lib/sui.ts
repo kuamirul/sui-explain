@@ -1,5 +1,7 @@
 import { SuiGraphQLClient } from '@mysten/sui/graphql';
 import { graphql } from '@mysten/sui/graphql/schema';
+import { isValidSuiAddress, normalizeSuiAddress } from '@mysten/sui/utils';
+import { SYSTEM_PACKAGE_IDS } from './protocols';
 
 // Public JSON-RPC on Sui fullnodes is deprecated and now returns "Method not found".
 // GraphQL is the supported replacement for reads.
@@ -22,6 +24,44 @@ const TransactionMetaQuery = graphql(`
     }
   }
 `);
+
+// Package ID -> original (version 1) package ID. Package versions never change, so this cache never goes stale.
+const originalIdCache = new Map<string, string>();
+
+/**
+ * Resolves package IDs to their original (version 1) IDs.
+ * A package that fails to resolve maps to itself, so a GraphQL error never fails the page.
+ */
+export async function resolveOriginalPackages(packageIds: string[]): Promise<Record<string, string>> {
+  const ids = [...new Set(packageIds.map((id) => normalizeSuiAddress(id)))];
+  const missing = ids.filter((id) => isValidSuiAddress(id) && !SYSTEM_PACKAGE_IDS.has(id) && !originalIdCache.has(id));
+
+  if (missing.length > 0) {
+    // One request with an alias per package. IDs are validated hex above, so they are safe to inline.
+    const fields = missing
+      .map((id, i) => `p${i}: package(address: "${id}") { address packageVersionsBefore(first: 1) { nodes { address } } }`)
+      .join('\n');
+    try {
+      const { data } = await suiClient.query<Record<string, OriginalIdResult | null>>({ query: `query { ${fields} }`, variables: {} });
+      missing.forEach((id, i) => {
+        const pkg = data?.[`p${i}`];
+        if (!pkg) return;
+        // `package(address)` returns the latest version; version 1 is the first "before" it.
+        // If there is none, the latest version is version 1.
+        originalIdCache.set(id, pkg.packageVersionsBefore.nodes[0]?.address ?? pkg.address);
+      });
+    } catch (err) {
+      console.warn('Could not resolve original package IDs:', err);
+    }
+  }
+
+  return Object.fromEntries(ids.map((id) => [id, originalIdCache.get(id) ?? id]));
+}
+
+interface OriginalIdResult {
+  address: string;
+  packageVersionsBefore: { nodes: { address: string }[] };
+}
 
 export interface TransactionMeta {
   sender: string | null;

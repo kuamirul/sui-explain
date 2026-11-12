@@ -1,0 +1,192 @@
+{
+  "digest": "EAw2EK61WugYfHu87YtjHM1GGdUE4nhXBZsnb8ymDgYk",
+  "sender": "0xa8f61f40de946d9de40b97a158eaf596a5e027e97ee28f64c4059808744dd589",
+  "timestampMs": "1794445215018",
+  "status": {
+    "success": true,
+    "error": null
+  },
+  "gasUsed": {
+    "computationCost": "100000",
+    "storageCost": "10313200",
+    "storageRebate": "8989901",
+    "nonRefundableStorageFee": "899"
+  },
+  "gasOwner": "0xa8f61f40de946d9de40b97a158eaf596a5e027e97ee28f64c4059808744dd589",
+  "changedObjects": [
+    {
+      "objectId": "0x15dbcac854b1fc68fc9467dbd9ab34270447aabd8cc0e04a5864d95ccb86b74a",
+      "inputState": "Exists",
+      "inputVersion": "1082717165",
+      "inputDigest": "CXxnRvPLu9px7zKpR9Vuh5TAohk8Q8g2VT2Ur8hCsimM",
+      "inputOwner": {
+        "Shared": {
+          "initialSharedVersion": "591090451"
+        },
+        "$kind": "Shared"
+      },
+      "outputState": "ObjectWrite",
+      "outputVersion": "1082717166",
+      "outputDigest": "5trRk1k8vka9P6ke9UHn7WYS9uUhD1SmxZooy23kBG8d",
+      "outputOwner": {
+        "Shared": {
+          "initialSharedVersion": "591090451"
+        },
+        "$kind": "Shared"
+      },
+      "idOperation": "None"
+    },
+    {
+      "objectId": "0x44c4b7af85d21ee86971d4f6376fc0b80d6e851de6200ee1822646b42acc9dd1",
+      "inputState": "Exists",
+      "inputVersion": "1082717078",
+      "inputDigest": "n34V8g8WS4cbcmYBrA1GP3XVvyLgbE4v1hn4ZYeSEiJ",
+      "inputOwner": {
+        "AddressOwner": "0xa8f61f40de946d9de40b97a158eaf596a5e027e97ee28f64c4059808744dd589",
+        "$kind": "AddressOwner"
+      },
+      "outputState": "ObjectWrite",
+      "outputVersion": "1082717166",
+      "outputDigest": "4MUKbFMhXvRaU9kSPb57Aunxc7fwo8MSN5fVRFq1B3Gz",
+      "outputOwner": {
+        "AddressOwner": "0xa8f61f40de946d9de40b97a158eaf596a5e027e97ee28f64c4059808744dd589",
+        "$kind": "AddressOwner"
+      },
+      "idOperation": "None"
+    },
+    {
+      "objectId": "0xaa6391bd932462b7289a8dfc8aa3dd92655fed371c5474d4bf98eb1b7f8322d4",
+      "inputState": "DoesNotExist",
+      "inputVersion": null,
+      "inputDigest": null,
+      "inputOwner": null,
+      "outputState": "ObjectWrite",
+      "outputVersion": "1082717166",
+      "outputDigest": "J9yccy4TtCh7hqCcigSUb7mfokLMQYzHrKsCc15HztSB",
+      "outputOwner": {
+        "AddressOwner": "0xa8f61f40de946d9de40b97a158eaf596a5e027e97ee28f64c4059808744dd589",
+        "$kind": "AddressOwner"
+      },
+      "idOperation": "Created"
+    }
+  ],
+  "balanceChanges": [
+    {
+      "coinType": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI",
+      "address": "0xa8f61f40de946d9de40b97a158eaf596a5e027e97ee28f64c4059808744dd589",
+      "amount": "-20001423299"
+    },
+    {
+      "coinType": "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC",
+      "address": "0xa8f61f40de946d9de40b97a158eaf596a5e027e97ee28f64c4059808744dd589",
+      "amount": "16417388"
+    }
+  ],
+  "objectTypes": {
+    "0x15dbcac854b1fc68fc9467dbd9ab34270447aabd8cc0e04a5864d95ccb86b74a": "0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267::pool::Pool<0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI,0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC>",
+    "0x44c4b7af85d21ee86971d4f6376fc0b80d6e851de6200ee1822646b42acc9dd1": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI>",
+    "0xaa6391bd932462b7289a8dfc8aa3dd92655fed371c5474d4bf98eb1b7f8322d4": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC>"
+  },
+  "commands": [
+    {
+      "$kind": "SplitCoins",
+      "SplitCoins": {
+        "coin": {
+          "$kind": "GasCoin",
+          "GasCoin": true
+        },
+        "amounts": [
+          {
+            "$kind": "Input",
+            "Input": 0
+          }
+        ]
+      }
+    },
+    {
+      "$kind": "MoveCall",
+      "MoveCall": {
+        "package": "0x0000000000000000000000000000000000000000000000000000000000000002",
+        "module": "coin",
+        "function": "zero",
+        "typeArguments": [
+          "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
+        ],
+        "arguments": []
+      }
+    },
+    {
+      "$kind": "MoveCall",
+      "MoveCall": {
+        "package": "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+        "module": "gateway",
+        "function": "swap_assets",
+        "typeArguments": [
+          "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI",
+          "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
+        ],
+        "arguments": [
+          {
+            "$kind": "Input",
+            "Input": 1
+          },
+          {
+            "$kind": "Input",
+            "Input": 2
+          },
+          {
+            "$kind": "Input",
+            "Input": 3
+          },
+          {
+            "$kind": "NestedResult",
+            "NestedResult": [
+              0,
+              0
+            ]
+          },
+          {
+            "$kind": "Result",
+            "Result": 1
+          },
+          {
+            "$kind": "Input",
+            "Input": 4
+          },
+          {
+            "$kind": "Input",
+            "Input": 5
+          },
+          {
+            "$kind": "Input",
+            "Input": 6
+          },
+          {
+            "$kind": "Input",
+            "Input": 7
+          },
+          {
+            "$kind": "Input",
+            "Input": 8
+          }
+        ]
+      }
+    }
+  ],
+  "originalPackages": {
+    "0x0000000000000000000000000000000000000000000000000000000000000002": "0x0000000000000000000000000000000000000000000000000000000000000002",
+    "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c": "0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267"
+  },
+  "coins": {
+    "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI": {
+      "symbol": "SUI",
+      "decimals": 9,
+      "name": "Sui"
+    },
+    "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC": {
+      "symbol": "USDC",
+      "decimals": 6,
+      "name": "USD Coin (Native)"
+    }
+  }
+}
