@@ -8,6 +8,7 @@ export interface ParsedBalanceChange {
   owner: string;
   coinType: string;
   symbol: string;
+  decimals: number;
   amountFormatted: string;
   amountRaw: bigint;
   direction: 'in' | 'out';
@@ -137,6 +138,7 @@ async function parseBalanceChanges(
         owner: sender,
         coinType: c.coinType,
         symbol: meta.symbol,
+        decimals: meta.decimals,
         amountFormatted: formatAmount(c.amount, meta.decimals, meta.symbol),
         amountRaw: raw,
         direction: (raw >= 0n ? 'in' : 'out') as 'in' | 'out',
@@ -283,7 +285,7 @@ function deriveHeadline(
     const dex = findDexName(raw);
     const got = inCoins[0];
     return {
-      headline: `Swapped ${formatAbs(suiOut.amountRaw, 9)} SUI for ${formatAbs(got.amountRaw, 9)} ${got.symbol}`,
+      headline: `Swapped ${formatAbs(suiOut.amountRaw, 9)} SUI for ${formatAbs(got.amountRaw, got.decimals)} ${got.symbol}`,
       headlineSubtext: dex ? `via ${dex}` : undefined,
     };
   }
@@ -293,7 +295,7 @@ function deriveHeadline(
     const sold = outCoins[0];
     const got = inCoins[0];
     return {
-      headline: `Swapped ${formatAbs(sold.amountRaw, sold.symbol === 'SUI' ? 9 : guessDecimals(sold))} ${sold.symbol} for ${formatAbs(got.amountRaw, 9)} SUI`,
+      headline: `Swapped ${formatAbs(sold.amountRaw, sold.decimals)} ${sold.symbol} for ${formatAbs(got.amountRaw, 9)} SUI`,
       headlineSubtext: dex ? `via ${dex}` : undefined,
     };
   }
@@ -386,10 +388,4 @@ function formatAbs(raw: bigint, decimals: number): string {
   const whole = abs / divisor;
   const frac = (abs % divisor).toString().padStart(decimals, '0').replace(/0+$/, '');
   return frac ? `${whole}.${frac}` : `${whole}`;
-}
-
-function guessDecimals(b: ParsedBalanceChange): number {
-  // Try to derive from the formatted amount as fallback
-  const match = b.amountFormatted.match(/[+−][\d]+\.(\d+)/);
-  return match ? match[1].length : 9;
 }
