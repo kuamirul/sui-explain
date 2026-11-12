@@ -1,0 +1,47 @@
+{
+  "digest": "9skLCRcAz3tYmRrJbWGCYkZGzJmd9HmxzaG3btLoy1Hu",
+  "sender": null,
+  "timestampMs": "1793954476269",
+  "status": {
+    "success": true,
+    "error": null
+  },
+  "gasUsed": {
+    "computationCost": "0",
+    "storageCost": "0",
+    "storageRebate": "0",
+    "nonRefundableStorageFee": "0"
+  },
+  "gasOwner": null,
+  "changedObjects": [
+    {
+      "objectId": "0x0000000000000000000000000000000000000000000000000000000000000006",
+      "inputState": "Exists",
+      "inputVersion": "1020505912",
+      "inputDigest": "Aua4r6N1vwHQMQG3fXRHZEGcDc2LvYQfrXcWJmVSW53T",
+      "inputOwner": {
+        "Shared": {
+          "initialSharedVersion": "1"
+        },
+        "$kind": "Shared"
+      },
+      "outputState": "ObjectWrite",
+      "outputVersion": "1020505913",
+      "outputDigest": "41vU1a6AvNH1W8dM7CPwzdB9hHbnMog7Gm8eoLXxTW9i",
+      "outputOwner": {
+        "Shared": {
+          "initialSharedVersion": "1"
+        },
+        "$kind": "Shared"
+      },
+      "idOperation": "None"
+    }
+  ],
+  "balanceChanges": [],
+  "objectTypes": {
+    "0x0000000000000000000000000000000000000000000000000000000000000006": "0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+  },
+  "commands": null,
+  "originalPackages": {},
+  "coins": {}
+}
