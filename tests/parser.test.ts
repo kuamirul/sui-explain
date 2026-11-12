@@ -40,6 +40,13 @@ describe('swaps', () => {
     expect(tx.headline).toBe('Swapped 1.59376 WAL for 0.053881455 SUI');
   });
 
+  it('shows both amounts in a token -> token swap, each with its own decimals', () => {
+    // -155600000 USDSUI and +155573722 USDC, both 6 decimals.
+    const tx = explain('swap-usdsui-to-usdc');
+    expect(tx.headline).toBe('Swapped 155.6 USDSUI for 155.573722 USDC');
+    expect(tx.headlineSubtext).toBe('via 7K Aggregator');
+  });
+
   it('credits the outermost aggregator (7K wraps the Cetus Aggregator router)', () => {
     expect(explain('swap-7k-aggregator').headlineSubtext).toBe('via 7K Aggregator');
     expect(explain('swap-wal-to-sui-7k').headlineSubtext).toBe('via 7K Aggregator');
@@ -47,17 +54,45 @@ describe('swaps', () => {
 });
 
 describe('transfers and staking', () => {
-  it('excludes gas from a SUI transfer', () => {
-    // Wallet change -24.385325153 SUI, fee 0.001088099.
+  const RECIPIENT = '0xb284d2baa3b14cb74c01835e4e1ac4f0b03b83652db4e690232c1b932c1703c8';
+
+  it('excludes gas from a SUI transfer and names the recipient', () => {
+    // Wallet change -24.385325153 SUI, fee 0.001088099. The recipient got +24.384237054.
     const tx = explain('transfer-sui');
-    expect(tx.headline).toBe('Sent 24.384237054 SUI');
+    expect(tx.headline).toBe('Sent 24.384237054 SUI to 0xb284…03c8');
     expect(tx.headlineSubtext).toBe('Transfer to another wallet');
+    expect(tx.recipient).toBe(RECIPIENT);
   });
 
   it('does not subtract gas when someone else paid it (sponsored transaction)', () => {
     const s = fixture('transfer-sui');
     const sponsored = { ...s, gasOwner: '0x' + 'ab'.repeat(32) };
-    expect(explainTransaction(sponsored).headline).toBe('Sent 24.385325153 SUI');
+    expect(explainTransaction(sponsored).headline).toBe('Sent 24.385325153 SUI to 0xb284…03c8');
+  });
+
+  it('names the recipient of a token transfer, with the token decimals', () => {
+    // Sender: -9841508 USDC (6 decimals) and gas only in SUI. Recipient: +9841508 USDC.
+    const tx = explain('transfer-usdc');
+    expect(tx.headline).toBe('Sent 9.841508 USDC to 0xb5be…db77');
+    expect(tx.recipient).toBe('0xb5be5fcc08ba652f06bce6af576184bb1cf50cba233ef3157df3107f0d67db77');
+  });
+
+  it('counts recipients instead of naming one when SUI went to several wallets', () => {
+    const s = fixture('transfer-sui');
+    // Split the real recipient's amount across two wallets.
+    const sui = s.balanceChanges.find((b) => b.address === RECIPIENT)!;
+    const half = (BigInt(sui.amount) / 2n).toString();
+    const split = {
+      ...s,
+      balanceChanges: [
+        ...s.balanceChanges.filter((b) => b !== sui),
+        { ...sui, amount: half },
+        { ...sui, address: '0x' + 'cd'.repeat(32), amount: half },
+      ],
+    };
+    const tx = explainTransaction(split);
+    expect(tx.headline).toBe('Sent 24.384237054 SUI to 2 wallets');
+    expect(tx.recipient).toBeUndefined();
   });
 
   it('excludes gas from the staked amount', () => {

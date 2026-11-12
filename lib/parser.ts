@@ -37,6 +37,8 @@ export interface ParsedTransaction {
   gasCostSui: string;
   headline: string;
   headlineSubtext?: string;
+  /** Receiving wallet of a simple coin transfer, when there is exactly one. */
+  recipient?: string;
   balanceChanges: ParsedBalanceChange[];
   objectChanges: ParsedObjectChange[];
   commands: ParsedCommand[];
@@ -54,7 +56,7 @@ export function explainTransaction(s: TxSnapshot): ParsedTransaction {
   const sender = s.sender ?? 'Unknown';
   const balanceChanges = parseBalanceChanges(s, sender);
   const objectChanges = parseObjectChanges(s);
-  const { headline, headlineSubtext } = deriveHeadline(s, balanceChanges, objectChanges);
+  const { headline, headlineSubtext, recipient } = deriveHeadline(s, balanceChanges, objectChanges);
 
   return {
     digest: s.digest,
@@ -65,6 +67,7 @@ export function explainTransaction(s: TxSnapshot): ParsedTransaction {
     gasCostSui: formatAbs(clampToZero(netGasMist(s)), 9),
     headline,
     headlineSubtext,
+    recipient,
     balanceChanges,
     objectChanges,
     commands: parseCommands(s),
@@ -246,7 +249,7 @@ function deriveHeadline(
   s: TxSnapshot,
   balanceChanges: ParsedBalanceChange[],
   objChanges: ParsedObjectChange[],
-): { headline: string; headlineSubtext?: string } {
+): Headline {
   if (!s.status.success) {
     return { headline: 'Transaction Failed', headlineSubtext: s.status.error.message };
   }
@@ -301,18 +304,29 @@ function deriveHeadline(
     const sold = outCoins[0];
     const got = inCoins[0];
     return {
-      headline: `Swapped ${sold.symbol} for ${got.symbol}`,
+      headline: `Swapped ${formatAbs(sold.amountRaw, sold.decimals)} ${sold.symbol} for ${formatAbs(got.amountRaw, got.decimals)} ${got.symbol}`,
       headlineSubtext: dex ? `via ${dex}` : undefined,
     };
   }
 
-  // ── Simple SUI transfer ──
+  // ── Simple coin transfer (SUI or any one token) ──
   if (s.commands) {
-    const onlyTransfers = s.commands.every((c) => 'TransferObjects' in c || 'SplitCoins' in c);
+    const onlyTransfers = s.commands.every((c) => 'TransferObjects' in c || 'SplitCoins' in c || 'MergeCoins' in c);
     const transferred = s.commands.filter((c) => 'TransferObjects' in c);
-    if (onlyTransfers && transferred.length > 0 && suiOut && inCoins.length === 0) {
+    const sent = flows.filter((b) => b.direction === 'out');
+    if (onlyTransfers && transferred.length > 0 && sent.length === 1 && inCoins.length === 0) {
+      const coin = sent[0];
+      const amount = `${formatAbs(coin.amountRaw, coin.decimals)} ${coin.symbol}`;
+      const recipients = coinRecipients(s, coin.coinType);
+      if (recipients.length === 1) {
+        return {
+          headline: `Sent ${amount} to ${shortAddress(recipients[0])}`,
+          headlineSubtext: 'Transfer to another wallet',
+          recipient: recipients[0],
+        };
+      }
       return {
-        headline: `Sent ${formatAbs(suiOut.amountRaw, 9)} SUI`,
+        headline: recipients.length > 1 ? `Sent ${amount} to ${recipients.length} wallets` : `Sent ${amount}`,
         headlineSubtext: 'Transfer to another wallet',
       };
     }
@@ -358,7 +372,27 @@ function findLabeledCall(s: TxSnapshot, calls: MoveCall[]): MoveCall | undefined
   return calls.find((mc) => isNonSystemProtocol(s, mc) && actionOf(s, mc) !== undefined);
 }
 
-function actionHeadline(s: TxSnapshot, mc: MoveCall): { headline: string; headlineSubtext?: string } {
+interface Headline {
+  headline: string;
+  headlineSubtext?: string;
+  recipient?: string;
+}
+
+/**
+ * Wallets other than the sender whose balance of `coinType` went up.
+ * In a simple transfer these are the recipients. Reading balance changes avoids
+ * decoding the BCS address argument of TransferObjects.
+ */
+function coinRecipients(s: TxSnapshot, coinType: string): string[] {
+  const sender = s.sender ? normalizeSuiAddress(s.sender) : null;
+  const type = normalizeType(coinType);
+  return s.balanceChanges
+    .filter((b) => normalizeType(b.coinType) === type && BigInt(b.amount) > 0n)
+    .map((b) => normalizeSuiAddress(b.address))
+    .filter((a) => a !== sender);
+}
+
+function actionHeadline(s: TxSnapshot, mc: MoveCall): Headline {
   return { headline: actionOf(s, mc)!, headlineSubtext: protocolOf(s, mc)?.name };
 }
 
