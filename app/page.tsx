@@ -15,7 +15,7 @@ export default function Home() {
           </div>
           <h1 className="text-3xl font-bold text-gray-900">SuiExplain</h1>
           <p className="mt-2 text-base text-gray-500">
-            Paste any Sui transaction digest and get a plain-English explanation of what happened.
+            Paste a Sui transaction digest or wallet address and get a plain-English explanation of what happened.
           </p>
         </div>
 

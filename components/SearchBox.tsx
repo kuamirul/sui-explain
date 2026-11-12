@@ -10,15 +10,27 @@ export function SearchBox() {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const digest = value.trim();
-    if (!digest) return;
+    const input = value.trim();
+    if (!input) return;
+
+    // Digests are base58, which has no "0", so anything starting with 0x is an address.
+    if (input.startsWith('0x')) {
+      if (!/^0x[0-9a-fA-F]{1,64}$/.test(input)) {
+        setError('That doesn\'t look like a valid Sui address.');
+        return;
+      }
+      setError('');
+      router.push(`/address/${input}`);
+      return;
+    }
+
     // Basic Sui digest validation: base58, ~44 chars
-    if (digest.length < 20) {
-      setError('That doesn\'t look like a valid Sui transaction digest.');
+    if (input.length < 20) {
+      setError('That doesn\'t look like a valid Sui transaction digest or address.');
       return;
     }
     setError('');
-    router.push(`/tx/${encodeURIComponent(digest)}`);
+    router.push(`/tx/${encodeURIComponent(input)}`);
   }
 
   return (
@@ -28,7 +40,7 @@ export function SearchBox() {
           type="text"
           value={value}
           onChange={(e) => { setValue(e.target.value); setError(''); }}
-          placeholder="Paste a transaction digest, e.g. 8S2oba…"
+          placeholder="Paste a transaction digest or wallet address"
           className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
           spellCheck={false}
           autoComplete="off"

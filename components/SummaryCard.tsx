@@ -1,6 +1,7 @@
 import type { ParsedTransaction } from '@/lib/parser';
 import { StatusBadge } from './StatusBadge';
 import { CopyButton } from './CopyButton';
+import { AddressLink } from './AddressLink';
 
 export function SummaryCard({ tx, aiHeadline }: { tx: ParsedTransaction; aiHeadline?: string }) {
   const date = tx.timestampMs
@@ -32,11 +33,14 @@ export function SummaryCard({ tx, aiHeadline }: { tx: ParsedTransaction; aiHeadl
       <div className="mt-4 flex flex-wrap gap-4 border-t border-gray-100 pt-4 text-sm text-gray-600">
         <span>
           <span className="font-medium text-gray-800">From </span>
-          <span className="font-mono">
-            {tx.sender.slice(0, 6)}…{tx.sender.slice(-4)}
-          </span>
-          <CopyButton value={tx.sender} />
+          <AddressLink address={tx.sender} />
         </span>
+        {tx.recipient && (
+          <span>
+            <span className="font-medium text-gray-800">To </span>
+            <AddressLink address={tx.recipient} />
+          </span>
+        )}
         <span>
           <span className="font-medium text-gray-800">Fee </span>
           {tx.gasCostSui} SUI

@@ -2,11 +2,13 @@
 
 SuiExplain turns a Sui transaction digest into a plain-English summary.
 Paste a digest from Sui Mainnet and the app shows what happened, who sent it, what it cost, and which tokens and objects changed.
+Paste a wallet address to see its recent transactions, each with a one-line summary.
 No wallet connection is needed.
 
 ## Features
 
-- **Headline summary.** Rule-based detection of common actions: transfers, swaps, staking, unstaking, mints, and package publishes. Amounts exclude the gas fee.
+- **Headline summary.** Rule-based detection of common actions: transfers (with the recipient), swaps (with both amounts), staking, unstaking, mints, and package publishes. Amounts exclude the gas fee.
+- **Wallet activity.** `/address/<address>` lists the transactions a wallet sent or received, newest first, 10 per page.
 - **Protocol labels.** Known actions on DeepBook, Cetus, Turbos, Aftermath, Bluefin, 7K, Cetus Aggregator, Suilend, Navi, Scallop, and AlphaFi.
 - **Optional AI headline.** If a Google AI key is set, a Gemini model rewrites the headline in more natural language.
 - **Token changes.** Balance changes for the sender's wallet, with correct decimals and symbols from on-chain coin metadata.
@@ -17,17 +19,17 @@ No wallet connection is needed.
 ## How it works
 
 The app is a Next.js 14 (App Router) project.
-The page `app/tx/[digest]/page.tsx` renders on the server, so no data is fetched from the browser.
+The pages `app/tx/[digest]/page.tsx` and `app/address/[address]/page.tsx` render on the server, so no data is fetched from the browser.
 
 | File | Purpose |
 | --- | --- |
-| `lib/sui.ts` | Sui GraphQL client, sender and timestamp query, and original package ID lookup |
+| `lib/sui.ts` | Sui GraphQL client, sender and timestamp query, address transaction list, and original package ID lookup |
 | `lib/snapshot.ts` | Fetches everything about one transaction into a plain-JSON `TxSnapshot` |
 | `lib/parser.ts` | Converts a `TxSnapshot` into the `ParsedTransaction` shape the UI uses. No network access |
 | `lib/coins.ts` | Coin metadata lookup with a built-in table and an in-memory cache |
 | `lib/protocols.ts` | Known protocols, keyed by original package ID, with labels for their functions |
 | `lib/llm.ts` | Optional Gemini headline rewrite |
-| `components/` | UI cards for summary, token changes, steps, and object changes |
+| `components/` | UI cards for summary, token changes, steps, object changes, and address transaction rows |
 | `tests/` | Parser tests on saved mainnet transactions (`tests/fixtures/`) |
 | `scripts/capture-fixtures.ts` | Saves mainnet transactions as test fixtures |
 
