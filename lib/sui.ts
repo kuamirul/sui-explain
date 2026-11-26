@@ -82,3 +82,45 @@ export async function getTransactionMeta(digest: string): Promise<TransactionMet
     timestampMs: Number.isNaN(parsed) ? null : String(parsed),
   };
 }
+
+const AddressTransactionsQuery = graphql(`
+  query AddressTransactions($address: SuiAddress!, $before: String, $last: Int!) {
+    transactions(last: $last, before: $before, filter: { affectedAddress: $address }) {
+      pageInfo {
+        hasPreviousPage
+        startCursor
+      }
+      nodes {
+        digest
+      }
+    }
+  }
+`);
+
+export interface AddressTransactionsPage {
+  /** Newest first. */
+  digests: string[];
+  /** Pass as `before` to load the next older page. Null when there are no older transactions. */
+  olderCursor: string | null;
+}
+
+/** Transactions that touched an address (sent by it or changing its balances or objects), newest first. */
+export async function listAddressTransactions(
+  address: string,
+  options: { before?: string; limit: number },
+): Promise<AddressTransactionsPage> {
+  const { data, errors } = await suiClient.query({
+    query: AddressTransactionsQuery,
+    variables: { address, before: options.before ?? null, last: options.limit },
+  });
+  if (errors?.length) throw new Error(errors.map((e) => e.message).join('; '));
+
+  const page = data?.transactions;
+  if (!page) return { digests: [], olderCursor: null };
+
+  return {
+    // GraphQL returns each page oldest first.
+    digests: page.nodes.map((n) => n.digest).reverse(),
+    olderCursor: page.pageInfo.hasPreviousPage ? page.pageInfo.startCursor ?? null : null,
+  };
+}
